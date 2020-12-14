@@ -15,7 +15,7 @@ python3 -m pip install --user -e elfidev/
 ## Running the experiments
 
 There are two script files that need to be run in order to replicate the experiments. The first one is main.py, and it runs the Bayesian Optimization procedure with the chosen surrogate model. It takes 'DGP' (for the DGP-IWVI model), 'GP' (for the vanilla GP model) and
-'Rej' (rejection ABC for calculating 'true' posterior) as the main argument. And then, for the first two models the code the name of the experiment ('TE1', 'TE2', 'TE3', 'BDM', 'NW') requires random seeds (1-1000 were used in the paper). The DGP architecture also needs to be specified, it needs 'True' or 'False' for the inclusion of the LV layer, followed by the number of GP layers. The following example runs the DGP model with random seed that equals to 1 and the 'LV-GP' architecture:
+'Rej' (rejection ABC for calculating 'true' posterior) as the main argument. And then, for the first two models the code the name of the experiment ('TE1', 'TE2', 'TE3', 'BDM', 'NW') requires random seeds (1-1000 were used in the paper). The DGP architecture also needs to be specified, it needs 'True' or 'False' for the inclusion of the LV layer, followed by the number of hidden GP layers. The following example runs the DGP model with random seed that equals to 1 and the 'LV-2GP' architecture:
 
 ```
 python3 main.py DGP BDM 1 True 1
