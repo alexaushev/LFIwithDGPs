@@ -1,0 +1,728 @@
+"""This module contains an interface for using the SGHMC DGP in ELFI."""
+import numpy as np
+import tensorflow as tf
+import copy
+import logging
+
+
+import matplotlib.pyplot as plt
+
+from scipy.cluster.vq import kmeans2
+
+from gpflow.kernels import RBF
+from gpflow.likelihoods import Gaussian
+from gpflow.features import InducingPoints
+from gpflow.training import NatGradOptimizer, AdamOptimizer
+from gpflow.mean_functions import Identity, Linear
+from gpflow import defer_build, params_as_tensors
+from gpflow.params import Minibatch, DataHolder, Parameter, ParamList
+from gpflow import Param, autoflow
+
+from gpflow.multioutput.features import MixedKernelSharedMof
+
+from gpflow.models import Model
+from gpflow import transforms
+from gpflow import settings
+import gpflow
+
+from elfi.methods.bo.iwvi.layers import GPLayer, LatentVariableLayer
+from elfi.methods.bo.iwvi.temp_workaround import SharedMixedMok
+from elfi.methods.bo.iwvi.models import DGP_VI, DGP_IWVI
+
+from elfi.methods.bo.iwvi.sghmc import SGHMC
+
+
+
+logger = logging.getLogger(__name__)
+logging.getLogger("DGP").setLevel(logging.WARNING)  # DGP logger
+
+
+class DGPRegression:
+    """Deep Gaussian Process regression using the GPFlow library.
+
+    GPy API: https://sheffieldml.github.io/GPy/
+    """
+    def __init__(self, 
+                parameter_names = None,
+                bounds = None,
+                GPlayers = 1,
+                LVlayer = True,
+                Ms = 50,
+                IW_samples = 20,
+                pred_samples = 100,
+                opt_steps = 20000,
+                q = 0.3):
+        """Initialize GPyRegression.
+
+        Parameters
+        ----------
+        parameter_names : list of str, optional
+            Names of parameter nodes. If None, sets dimension to 1.
+        bounds : dict, optional
+            The region where to estimate the posterior for each parameter in
+            model.parameters.
+            `{'parameter_name':(lower, upper), ... }`
+            If not supplied, defaults to (0, 1) bounds for all dimensions.
+        GPlayers : int, optional
+            number of GP layers in a DGP model.
+        LVlayer : bool, optional
+            presense of the latent variable layer in a DGP model.
+        Ms: int, optional
+            number of inducing points per each layer.
+        IW_samples : int, optional
+            number of Importance-Weighted samples.
+        pred_samples : int, optional
+            number of samples are used for predictions and gradients. 
+        opt_steps : int, optional
+            number of hyperparameter optimization steps
+        
+        class ARGS:
+            minibatch_size = None
+            lr = 5e-3
+            lr_decay = 0.99
+
+        class LG(ARGS):
+            # 'VI', 'SGHMC', 'IWAE'
+            mode = 'IWAE'
+            M = 100 # 100
+            likelihood_variance = 0.1
+            fix_linear = True
+            num_IW_samples = 20 # 5
+            gamma = 5e-2
+            gamma_decay = 0.99
+
+        if LVlayer == True:
+            configuration = 'L1'
+        else:
+            configuration = 'G1'
+            GPlayers -= 1
+
+<<<<<<< Updated upstream
+        class LGG(LG):
+            configuration = 'L1_G1'
+=======
+        for i in range(0, GPlayers):
+            configuration += '_G1'
+>>>>>>> Stashed changes
+
+        class LGGG(LG):
+            configuration = 'L1_G1_G1'
+            
+        self._gp = None
+        self.its = 20000 # 20000
+        self.session = None
+<<<<<<< Updated upstream
+        self.model_type = LGGG
+=======
+        self.quantile = q
+
+        self.model_type = Model
+        self.model_type.configuration = configuration
+
+        print(configuration)
+>>>>>>> Stashed changes
+
+        self.x_mean = None
+        self.x_std = None 
+        self.y_mean = None
+        self.y_std = None
+
+        if parameter_names is None:
+            input_dim = 1
+        elif isinstance(parameter_names, (list, tuple)):
+            input_dim = len(parameter_names)
+
+        if bounds is None:
+            logger.warning('Parameter bounds not specified. Using [0,1] for each parameter.')
+            bounds = [(0, 1)] * input_dim
+        elif len(bounds) != input_dim:
+            raise ValueError(
+                'Length of `bounds` ({}) does not match the length of `parameter_names` ({}).'
+                .format(len(bounds), input_dim))
+        elif isinstance(bounds, dict):
+            if len(bounds) == 1:  # might be the case parameter_names=None
+                bounds = [bounds[n] for n in bounds.keys()]
+            else:
+                # turn bounds dict into a list in the same order as parameter_names
+                bounds = [bounds[n] for n in parameter_names]
+        else:
+            raise ValueError("Keyword `bounds` must be a dictionary "
+                             "`{'parameter_name': (lower, upper), ... }`")
+        self.bounds = bounds
+        self.input_dim = input_dim
+        self.num_posterior_samples = 500
+        self.S = 100
+        self.mlls = []
+        return
+
+        
+    # -
+    def __str__(self):
+        """Return GPy's __str__."""
+        return self._gp.__str__()
+
+    # -
+    def __repr__(self):
+        """Return GPy's __str__."""
+        return self.__str__()
+
+
+    # + noiseless is not implemented
+    def predict(self, X, noiseless=False):
+        """Return the GP model mean and variance at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+        noiseless : bool
+            whether to include the noise variance or not to the returned variance
+
+        Returns
+        -------
+        tuple
+            GP (mean, var) at x where
+                mean : np.array
+                    with shape (x.shape[0], 1)
+                var : np.array
+                    with shape (x.shape[0], 1)
+
+        """
+        X = np.asanyarray(X).reshape((-1, self.input_dim))
+
+        if self.x_mean is not None:
+            X = (X - self.x_mean) / self.x_std
+
+<<<<<<< Updated upstream
+        ys = self._gp.predict_y_samples(X, self.S)
+        m = np.mean(ys, 0)
+        v = np.var(ys, 0)
+        
+        return m * self.y_std + self.y_mean, v * self.y_std
+=======
+        fs = self._gp.predict_y_samples(X, self.S)
+        q = np.quantile(fs, self.quantile, axis=0)
+        q_fs = list()
+        for sample in fs:
+            q_fs.append(list())
+            for i in range(0, len(sample)):
+                if sample[i] <= q[i]:
+                    el = sample[i]
+                else:
+                    el = np.array(np.nan)
+                el = el.reshape((1))
+                q_fs[-1].append(np.array(el))
+                
+            q_fs[-1] = np.array(q_fs[-1])
+
+        q_fs = np.array(q_fs)
+
+
+        
+
+        q_mean = np.nanmean(q_fs, 0)
+        q_var = np.nanvar(q_fs, 0)
+        
+
+
+        if isinstance(q_mean[0], float) == False:
+            q_mean = np.concatenate( q_mean, axis=0 )
+            q_var = np.concatenate( q_var, axis=0 )
+
+        return q_mean * self.y_std + self.y_mean, q_var * self.y_std
+
+
+    def sample_fs(self, X, noiseless=False):
+        """Return the GP model mean and variance at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+        noiseless : bool
+            whether to include the noise variance or not to the returned variance
+
+        Returns
+        -------
+        tuple
+            GP (mean, var) at x where
+                mean : np.array
+                    with shape (x.shape[0], 1)
+                var : np.array
+                    with shape (x.shape[0], 1)
+
+        """
+        X = np.asanyarray(X).reshape((-1, self.input_dim))
+        X = (X - self.x_mean) / self.x_std
+        fs = self._gp.predict_y_samples(X, self.S)
+        return fs
+>>>>>>> Stashed changes
+
+
+    def sample_zs(self, X, noiseless=False):
+        X = X.reshape((-1, self.input_dim))
+        X = (X - self.x_mean) / self.x_std
+
+        feed_dict = {self.X_placeholder: X}
+
+        Zs = self.session.run((self.Zs), feed_dict=feed_dict)
+        return Zs
+
+    # + 
+    def predict_mean(self, X):
+        """Return the GP model mean function at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+
+        Returns
+        -------
+        np.array
+            with shape (x.shape[0], 1)
+
+        """
+        return self.predict(X)[0]
+
+
+    def predict_var(self, X):
+        """Return the GP model variance function at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+
+        Returns
+        -------
+        np.array
+            with shape (x.shape[0], 1)
+
+        """
+        return self.predict(X)[1]
+
+
+    def predictive_gradients(self, X):
+        """Return the gradients of the GP model mean and variance at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+
+        Returns
+        -------
+        tuple
+            GP (grad_mean, grad_var) at x where
+                grad_mean : np.array
+                    with shape (x.shape[0], input_dim)
+                grad_var : np.array
+                    with shape (x.shape[0], input_dim)
+
+        """
+        X = X.reshape((-1, self.input_dim))
+        X = (X - self.x_mean) / self.x_std
+
+        feed_dict = {self.X_placeholder: X}
+        mean_grad_val, var_grad_val = self.session.run((self.mean_grad, self.var_grad),
+<<<<<<< Updated upstream
+                                                       feed_dict=feed_dict)
+=======
+                                                      feed_dict=feed_dict)
+
+>>>>>>> Stashed changes
+        return  mean_grad_val[0], var_grad_val[0]
+
+
+    # -
+    def predictive_gradient_mean(self, X):
+        """Return the gradient of the GP model mean at x.
+
+        Parameters
+        ----------
+        x : np.array
+            numpy compatible (n, input_dim) array of points to evaluate
+            if len(x.shape) == 1 will be cast to 2D with x[None, :]
+
+        Returns
+        -------
+        np.array
+            with shape (x.shape[0], input_dim)
+        """
+        return self.predictive_gradients(X)[0]
+
+
+    # + if there is a model --> create, if not --> reset
+    def _init_gp(self, X, Y, optimize):
+        if self.x_mean is None or self.x_std is None:
+            min_x, max_x = map(list,zip(*self.bounds))
+            min_x, max_x = np.array(min_x), np.array(max_x)
+            self.x_mean = (max_x + min_x) / 2.0
+            self.x_std = np.abs(max_x - self.x_mean)
+        
+        self.y_mean = np.mean(Y, 0)
+        self.y_std = np.std(Y, 0)
+        X = (X - self.x_mean) / self.x_std
+        Y = (Y - self.y_mean) / self.y_std
+
+        cond = False
+        if self._gp is not None:
+            self._gp.X = X
+            self._gp.Y = Y
+<<<<<<< Updated upstream
+            cond = True
+
+        if optimize == True or self._gp is None:
+=======
+            cond = False
+            
+        if optimize == True:
+
+            if self._gp is not None:
+                self._gp.clear()
+>>>>>>> Stashed changes
+            self._gp = self.build_model(self.model_type, X, Y, conditioning=cond, apply_name=None)
+            self._gp.model_name = 'LV-GP-GP'
+            self.session = self._gp.enquire_session()
+            self._gp.init_op(self.session)
+
+        '''if cond == False:
+            self.optimize()
+
+            self.mlls.append(self._gp.compute_log_likelihood())
+            print('\n\n')
+            print(self.mlls[-1])
+            print("Finished training")
+            self._gp.anchor(self.session)'''
+        #plot_samples(model, path)
+        #plot_density(model, path)
+            
+
+    # + doesn't use noise_var, mean_function
+    def build_model(self, ARGS, X, Y, conditioning=False, apply_name=True,
+                    noise_var=None, mean_function=None):
+
+        if conditioning == False:
+            N, D = X.shape
+
+            # first layer inducing points
+            if N > ARGS.M:
+                Z = kmeans2(X, ARGS.M, minit='points')[0]
+            else:
+
+                min_x, max_x = self.bounds[0]
+                min_x = (min_x - self.x_mean) / self.x_std
+                max_x = (max_x - self.x_mean) / self.x_std
+            
+                Z = np.linspace(min_x, max_x, num = ARGS.M) # * X.shape[1])
+                Z = Z.reshape((-1, X.shape[1]))
+
+
+            #################################### layers
+            P = np.linalg.svd(X, full_matrices=False)[2]
+            layers = []
+            DX = D
+            DY = 1
+
+            D_in = D
+            D_out = D
+            
+            with defer_build():
+
+                # variance initialiaztion
+                lik = Gaussian()
+                lik.variance = ARGS.likelihood_variance
+
+                if len(ARGS.configuration) > 0:
+                    for c, d in ARGS.configuration.split('_'):
+                        if c == 'G':
+                            num_gps = int(d)
+                            A = np.zeros((D_in, D_out))
+                            D_min = min(D_in, D_out)
+                            A[:D_min, :D_min] = np.eye(D_min)
+                            mf = Linear(A=A)
+                            mf.b.set_trainable(False)
+
+                            def make_kern():
+                                k = RBF(D_in, lengthscales=float(D_in) ** 0.5, variance=1., ARD=True)
+                                k.variance.set_trainable(False)
+                                return k
+
+                            PP = np.zeros((D_out, num_gps))
+                            PP[:, :min(num_gps, DX)] = P[:, :min(num_gps, DX)]
+                            ZZ = np.random.randn(ARGS.M, D_in)
+                            ZZ[:, :min(D_in, DX)] = Z[:, :min(D_in, DX)]
+
+                            kern = SharedMixedMok(make_kern(), W=PP)
+                            inducing = MixedKernelSharedMof(InducingPoints(ZZ))
+
+                            l = GPLayer(kern, inducing, num_gps, mean_function=mf)
+                            if ARGS.fix_linear is True:
+                                kern.W.set_trainable(False)
+                                mf.set_trainable(False)
+
+                            layers.append(l)
+
+                            D_in = D_out
+
+                        elif c == 'L':
+                            d = int(d)
+                            D_in += d
+                            layers.append(LatentVariableLayer(d, XY_dim=DX+1))
+
+                kern = RBF(D_in, lengthscales=float(D_in)**0.5, variance=1., ARD=True)
+                ZZ = np.random.randn(ARGS.M, D_in)
+                ZZ[:, :min(D_in, DX)] = Z[:, :min(D_in, DX)]
+                layers.append(GPLayer(kern, InducingPoints(ZZ), DY))
+                self.layers = layers
+                self.lik = lik
+        else:
+            lik = self._gp.likelihood
+            layers = self._gp.layers._list
+
+            self._gp.clear()
+
+   
+        with defer_build():
+            
+            #################################### model
+            name = 'Model' if apply_name else None
+            
+
+            if ARGS.mode == 'VI':
+                model = DGP_VI(X, Y, layers, lik,
+                               minibatch_size=ARGS.minibatch_size,
+                               name=name)
+
+            elif ARGS.mode == 'SGHMC':
+                for layer in layers:
+                    if hasattr(layer, 'q_sqrt'):
+                        del layer.q_sqrt
+                        layer.q_sqrt = None
+                        layer.q_mu.set_trainable(False)
+
+                model = DGP_VI(X, Y, layers, lik,
+                               minibatch_size=ARGS.minibatch_size,
+                               name=name)
+
+
+            elif ARGS.mode == 'IWAE':
+                model = DGP_IWVI(X, Y, layers, lik,
+                                 minibatch_size=ARGS.minibatch_size,
+                                 num_samples=ARGS.num_IW_samples,
+                                 name=name)
+
+        global_step = tf.Variable(0, dtype=tf.int32)
+        op_increment = tf.assign_add(global_step, 1)
+
+        if not ('SGHMC' == ARGS.mode):
+            for layer in model.layers[:-1]:
+                if isinstance(layer, GPLayer):
+                    layer.q_sqrt = layer.q_sqrt.read_value() * 1e-5
+
+            model.compile()
+
+            #################################### optimization
+
+            var_list = [[model.layers[-1].q_mu, model.layers[-1].q_sqrt]]
+
+            model.layers[-1].q_mu.set_trainable(False)
+            model.layers[-1].q_sqrt.set_trainable(False)
+
+            gamma = tf.cast(tf.train.exponential_decay(ARGS.gamma, global_step, 1000, ARGS.gamma_decay, staircase=True),
+                            dtype=tf.float64)
+            lr = tf.cast(tf.train.exponential_decay(ARGS.lr, global_step, 1000, ARGS.lr_decay, staircase=True), dtype=tf.float64)
+
+            op_ng = NatGradOptimizer(gamma=gamma).make_optimize_tensor(model, var_list=var_list)
+
+            op_adam = AdamOptimizer(lr).make_optimize_tensor(model)
+
+            def train(s):
+                s.run(op_increment)
+                s.run(op_ng)
+                s.run(op_adam)
+
+            model.train_op = train
+            model.init_op = lambda s: s.run(tf.variables_initializer([global_step]))
+            model.global_step = global_step
+
+        else:
+            model.compile()
+
+            hmc_vars = []
+            for layer in layers:
+                if hasattr(layer, 'q_mu'):
+                    hmc_vars.append(layer.q_mu.unconstrained_tensor)
+
+            hyper_train_op = AdamOptimizer(ARGS.lr).make_optimize_tensor(model)
+
+            sghmc_optimizer = SGHMC(model, hmc_vars, hyper_train_op, 100)
+
+            def train_op(s):
+                s.run(op_increment),
+                sghmc_optimizer.sghmc_step(s),
+                sghmc_optimizer.train_hypers(s)
+
+            model.train_op = train_op
+            model.sghmc_optimizer = sghmc_optimizer
+            def init_op(s):
+                epsilon = 0.01
+                mdecay = 0.05
+                with tf.variable_scope('hmc'):
+                    sghmc_optimizer.generate_update_step(epsilon, mdecay)
+                v = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='hmc')
+                s.run(tf.variables_initializer(v))
+                s.run(tf.variables_initializer([global_step]))
+
+            model.init_op = init_op
+            model.global_step = global_step
+
+        # build the computation graph for the gradient
+        self.X_placeholder = tf.placeholder(tf.float64, shape=[None, X.shape[1]])
+<<<<<<< Updated upstream
+        Fmu, Fvar = model._build_predict(self.X_placeholder)
+        self.mean_grad = tf.gradients(Fmu, self.X_placeholder)
+        self.var_grad = tf.gradients(Fvar, self.X_placeholder)
+=======
+
+        self.Zs = model.layers[0].propagate(self.X_placeholder)
+        Fs, Fmu, Fvar = model._build_predict(self.X_placeholder)
+        self.mean_grad = tf.gradients(Fmu, self.X_placeholder)
+        self.var_grad = tf.gradients(Fvar, self.X_placeholder)                     
+>>>>>>> Stashed changes
+        return model
+
+    
+    # +
+    def update(self, X, Y, optimize=False):
+        """Update the GP model with new data.
+
+        Parameters
+        ----------
+        x : np.array
+        y : np.array
+        optimize : bool, optional
+            Whether to optimize hyperparameters.
+
+        """  
+        # Must cast these as 2d for GPy      
+        X = X.reshape((-1, self.input_dim))
+        Y = Y.reshape((-1, 1))
+
+<<<<<<< Updated upstream
+        if self._gp is not None:
+            X = np.r_[self.X, X]
+            Y = np.r_[self.Y, Y]
+        self._init_gp(X, Y, optimize)
+=======
+        if self.X is None or self.Y is None:
+            self.X = X
+            self.Y = Y
+        else:
+            self.X = np.r_[self.X, X]
+            self.Y = np.r_[self.Y, Y]
+
+        self._init_gp(self.X, self.Y, optimize)
+
+>>>>>>> Stashed changes
+
+        if optimize:
+            self.optimize()
+
+        self.mlls.append(self._gp.compute_log_likelihood())
+        print('\n\n')
+        print(self.mlls[-1])
+        print("Finished training")
+        self._gp.anchor(self.session)
+
+
+    def optimize(self):
+        """Optimize DGP hyperparameters."""
+        logger.debug("Optimizing DGP hyperparameters")
+        for it in range(self.its):
+            self._gp.train_op(self.session)
+
+<<<<<<< Updated upstream
+            if it % 100 == 0 :
+                self.mlls.append(self._gp.compute_log_likelihood())
+
+=======
+>>>>>>> Stashed changes
+        
+        
+
+    def get_posterior(self, x, i):
+        x = np.asanyarray(x).reshape((-1, self.input_dim))
+        x = (x - self.x_mean) / self.x_std
+        f = self._gp.predict_y_samples(x, i, session=self.session)
+        return f * self.y_std + self.y_mean
+
+    
+    def plot_mlls(self):
+        x = list()
+        for i in range(0, len(self.mlls)):
+            x.append(i+1)
+        plt.xticks(np.arange(min(x), max(x)+1, self.its))
+        plt.grid(color='grey', linestyle='-', linewidth=0.5)
+        plt.plot(x, self.mlls, color='blue', label='LogLik')
+        plt.legend(loc='upper left')
+        return
+
+<<<<<<< Updated upstream
+=======
+
+
+    def del_graph(self):
+        gpflow.reset_default_graph_and_session()
+        return
+>>>>>>> Stashed changes
+        
+    @property
+    def n_evidence(self):
+        """Return the number of observed samples."""
+        if self._gp is None:
+            return 0
+        return self._gp.X.size 
+
+<<<<<<< Updated upstream
+    # +
+    @property
+    def X(self):
+        """Return input evidence."""
+        return self._gp.X.value * self.x_std + self.x_mean
+
+    # +
+    @property
+    def Y(self):
+        """Return output evidence."""
+        return self._gp.Y.value * self.y_std + self.y_mean
+=======
+>>>>>>> Stashed changes
+
+    @property
+    def noise(self):
+        """Return the noise."""
+        return self._gp.Gaussian_noise.variance[0]
+
+    # +
+    @property
+    def instance(self):
+        """Return the gp instance."""
+        return self._gp
+
+    # +
+    def copy(self):
+        """Return a copy of current instance."""
+        kopy = copy.copy(self)
+        return kopy
+
+    def __copy__(self):
+        """Return a copy of current instance."""
+        return self.copy()
+
