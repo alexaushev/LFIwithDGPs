@@ -45,3 +45,16 @@ For 'main-kelfi.py', instead of the name of the model, the automatic differentat
 '''
 python3 main-kelfi.py BDM 1 False
 '''
+
+## Citation
+
+'''
+@article{aushev2020likelihood,
+  title={Likelihood-Free Inference with Deep Gaussian Processes},
+  author={Aushev, Alexander and Pesonen, Henri and Heinonen, Markus and Corander, Jukka and Kaski, Samuel},
+  journal={arXiv preprint arXiv:2006.10571},
+  year={2020}
+}
+'''
+
+the arxiv version of the paper: https://arxiv.org/pdf/2006.10571.pdf 
