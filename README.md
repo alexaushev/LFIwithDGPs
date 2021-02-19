@@ -36,25 +36,25 @@ Once the posterior samples are ready, the second script 'compare.py' can be run.
 
 MAF, MDNs and KELFI are computed in separate scripts: 'main-snl.py', 'main-kelfi.py'. They can be run similarly as the script from the main experiments. For the 'main-snl.py', the model ('MAF' or 'MDN'), the experiment name and the random seed number are needed. For example:
 
-'''
+```
 python3 main-snl.py MAF BDM 1
-'''
+```
 
 For 'main-kelfi.py', instead of the name of the model, the automatic differentation for hyperparameter learning should be specified ('True' or 'False'):
 
-'''
+```
 python3 main-kelfi.py BDM 1 False
-'''
+```
 
 ## Citation
 
-'''
+```
 @article{aushev2020likelihood,
   title={Likelihood-Free Inference with Deep Gaussian Processes},
   author={Aushev, Alexander and Pesonen, Henri and Heinonen, Markus and Corander, Jukka and Kaski, Samuel},
   journal={arXiv preprint arXiv:2006.10571},
   year={2020}
 }
-'''
+```
 
 the arxiv version of the paper: https://arxiv.org/pdf/2006.10571.pdf 
