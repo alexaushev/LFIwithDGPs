@@ -10,6 +10,7 @@ The project dependencies can be installed using the following command in the dir
 ```
 python3 -m pip install --user -r requirements.txt
 python3 -m pip install --user -e elfidev/
+pip install git+https://github.com/justinalsing/pydelfi.git
 ```
 
 ## Running the experiments
