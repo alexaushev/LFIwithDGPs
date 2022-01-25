@@ -1,5 +1,8 @@
+LICENSE
 MANIFEST.in
+README.md
 setup.cfg
+setup.py
 elfi/__init__.py
 elfi/client.py
 elfi/compiler.py
@@ -19,13 +22,17 @@ elfi/clients/multiprocessing.py
 elfi/clients/native.py
 elfi/examples/__init__.py
 elfi/examples/bdm.py
+elfi/examples/bdm_dgp.py
 elfi/examples/bignk.py
 elfi/examples/daycare.py
+elfi/examples/dgp_funcs.py
 elfi/examples/gauss.py
 elfi/examples/gnk.py
 elfi/examples/lorenz.py
 elfi/examples/lotka_volterra.py
 elfi/examples/ma2.py
+elfi/examples/navworld.py
+elfi/examples/openai_gym.py
 elfi/examples/ricker.py
 elfi/examples/cpp/Makefile
 elfi/examples/cpp/bdm.cpp
@@ -42,7 +49,9 @@ elfi/methods/results.py
 elfi/methods/utils.py
 elfi/methods/bo/__init__.py
 elfi/methods/bo/acquisition.py
+elfi/methods/bo/dgp_regression.py
 elfi/methods/bo/gpy_regression.py
+elfi/methods/bo/sghmc_dgp.py
 elfi/methods/bo/utils.py
 elfi/model/__init__.py
 elfi/model/augmenter.py

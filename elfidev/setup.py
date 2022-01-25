@@ -28,7 +28,7 @@ setup(
     install_requires=requirements,
     extras_require=optionals,
     description='ELFI - Engine for Likelihood-free Inference',
-    long_description=(open('docs/description.rst').read()),
+    long_description=(open('docs/faq.rst').read()),
     license='BSD',
     classifiers=[
         'Programming Language :: Python :: 3.5', 'Topic :: Scientific/Engineering',

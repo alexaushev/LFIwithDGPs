@@ -808,7 +808,7 @@ class BayesianOptimization(ParameterInference):
                  exploration_rate=10,
                  batch_size=1,
                  batches_per_acquisition=None,
-                 async=False,
+                 asynchr=False,
                  **kwargs):
         """Initialize Bayesian optimization.
 
@@ -839,7 +839,7 @@ class BayesianOptimization(ParameterInference):
         batches_per_acquisition : int, optional
             How many batches will be requested from the acquisition function at one go.
             Defaults to max_parallel_batches.
-        async : bool, optional
+        asynchr : bool, optional
             Allow acquisitions to be made asynchronously, i.e. do not wait for all the
             results from the previous acquisition before making the next. This can be more
             efficient with a large amount of workers (e.g. in cluster environments) but
@@ -875,7 +875,7 @@ class BayesianOptimization(ParameterInference):
         self.n_initial_evidence = n_initial
         self.n_precomputed_evidence = n_precomputed
         self.update_interval = update_interval
-        self.async = async
+        self.asynchr = asynchr
         self.it = 1
         self.mses = list()
 
@@ -1041,7 +1041,7 @@ class BayesianOptimization(ParameterInference):
         if not super(BayesianOptimization, self)._allow_submit(batch_index):
             return False
 
-        if self.async:
+        if self.asynchr:
             return True
 
         # Allow submitting freely as long we are still submitting initial evidence

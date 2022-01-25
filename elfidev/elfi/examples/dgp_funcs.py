@@ -94,25 +94,31 @@ def plot_variance(target_model, x_counts = 1000, samples = 100, points = True, k
 
 
 def plot_d(func, true_params, bounds):
-    x = np.linspace(*bounds[0], num = 8000)
+    x = np.linspace(*bounds['t1'], num = 4000)
     y_true = func(*true_params)
     ys = func(x)
     d = (ys - y_true)**2
     sqrtd = np.sqrt(d)
-    plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.2f}'))
+
+    fig = plt.gcf()
+    plt.gca().yaxis.set_major_formatter(StrMethodFormatter('{x:,.1f}'))
     plt.scatter(x, sqrtd, color='black', s=1)
     # plt.yticks([])
     plt.rcParams.update({'font.size': 10})
     plt.xticks(np.arange(0, 101, step = 50))
     
     plt.xlabel(r"$\theta$")
-    plt.ylabel(r"$d(x_\theta, x_{obs})$")
-    
-    
+    plt.ylabel(r"")
+
+    fig.set_size_inches(2.5,2.1)
+    plt.savefig('plots/func.png', dpi=600, bbox_inches = 'tight')
+    plt.close()
+        
     # plt.xticks(np.arange(min(x), max(x)+1, 10.0))
     # plt.axvline(0, color = 'black')
     # plt.axhline(0, color = 'black')
     return    
+
 
 def plot_func(func, bounds):
     x = np.linspace(*bounds[0], num = 2000)
@@ -304,8 +310,11 @@ class multigaussian:
 # UNUSUAL UNCERTAINTIES ==== ====
 
 class multimodal_logistic:
-    def __init__(self):
-        pass
+    def __init__(self, n=0.5, offset=50, noise=0.01):
+        self.offset = offset
+        self.n = n
+        self.noise=noise
+        
     
     def func(self, t1, n_obs=100, batch_size=1, random_state=None):
         r"""Generate a sequence of samples from the MA2 model.
@@ -330,16 +339,16 @@ class multimodal_logistic:
 
         batch_size = len(t1)
         w = random_state.randn(batch_size, 1)
-        source = random_state.randn(batch_size)
+        source = random_state.uniform(size=batch_size)
         x = list()
         # print(source)
         #print(w)
         
         for el in range(batch_size):
-            if source[el] < 0:
-                temp = 1 / (1 + np.exp(-0.1 * (t1[el] - 50))) + w[el] * 0.01
+            if source[el] < self.n:
+                temp = 1 / (1 + np.exp(-0.1 * (t1[el] - self.offset))) + w[el] * self.noise
             else:
-                temp = -1 / (1 + np.exp(-0.1 * (t1[el] - 50))) + w[el] * 0.01 + 1
+                temp = -1 / (1 + np.exp(-0.1 * (t1[el] - self.offset))) + w[el] * self.noise + 1
             x.append(temp)
         #zprint(x)
         return np.array(x)
@@ -371,6 +380,7 @@ class multimodal_logistic:
         elfi.Simulator(self.func, m['t1'], observed=y_obs, name='sim')
         elfi.Distance('euclidean', m['sim'], name='dist')
         return m
+
 
 
 class beta_x:
@@ -438,3 +448,74 @@ class beta_x:
 
 
 
+
+class bigaussian:
+    def __init__(self):
+        pass
+    
+    def N(self, mu, sigma, x):
+        return (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp((-1/2)*np.power((x - mu)/sigma, 2))
+        
+    
+    def func(self, t1, n_obs=100, batch_size=1, random_state=None):
+        r"""Generate a sequence of samples from the MA2 model.
+
+        The sequence is a moving average
+
+            x_i = w_i + \theta_1 w_{i-1} + \theta_2 w_{i-2}
+
+        where w_i are white noise ~ N(0,1).
+
+        Parameters
+        ----------
+        t1 : float, array_like
+        t2 : float, array_like
+        n_obs : int, optional
+        batch_size : int, optional
+        random_state : RandomState, optional
+
+        """
+        t1 = np.asanyarray(t1).reshape((-1, 1))
+        batch_size = len(t1)
+        random_state = random_state or np.random
+        w = random_state.randn(batch_size, 1) / 10000
+        source = random_state.uniform(size=batch_size)
+
+        x = []
+        for el in range(batch_size):
+            if source[el] < 0.4:
+                k1, k2 = 1, 0
+            elif source[el] >= 0.4:
+                k1, k2 = 0, 1
+        
+            temp = 100* (self.N(0, 50, t1[el]) * k1 + self.N(60, 55, t1[el]) * k2 +  w[el])
+            x.append(temp)
+        return np.array(x).flatten()
+
+
+    def get_model(self, n_obs=100, true_params=None, seed_obs=None):
+        """Return a complete MA2 model in inference task.
+
+        Parameters
+        ----------
+        n_obs : int, optional
+            observation length of the MA2 process
+        true_params : list, optional
+            parameters with which the observed data is generated
+        seed_obs : int, optional
+            seed for the observed data generation
+
+        Returns
+        -------
+        m : elfi.ElfiModel
+
+        """
+        if true_params is None:
+            true_params = [60]
+
+        y_obs = self.func(*true_params, random_state=np.random.RandomState(seed_obs))
+        m = elfi.ElfiModel()
+        elfi.Prior(ss.uniform, 0, 100, model=m, name='t1') 
+        elfi.Simulator(self.func, m['t1'], observed=y_obs, name='sim')
+        elfi.Distance('euclidean', m['sim'], name='dist')
+        return m

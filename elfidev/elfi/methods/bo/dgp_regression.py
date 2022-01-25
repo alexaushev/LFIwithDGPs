@@ -17,17 +17,12 @@ from gpflow.kernels import RBF
 from gpflow.likelihoods import Gaussian
 from gpflow.features import InducingPoints
 from gpflow.training import NatGradOptimizer, AdamOptimizer
-from gpflow.mean_functions import Identity, Linear
-from gpflow import defer_build, params_as_tensors
-from gpflow.params import Minibatch, DataHolder, Parameter, ParamList
-from gpflow import Param, autoflow
+from gpflow.mean_functions import Linear
+from gpflow import defer_build
 
 from gpflow.multioutput.features import MixedKernelSharedMof
 # from gpflow.multioutput.kernels import SharedMixedMok
 
-from gpflow.models import Model
-from gpflow import transforms
-from gpflow import settings
 import gpflow
 
 from elfi.methods.bo.iwvi.layers import GPLayer, LatentVariableLayer
@@ -36,29 +31,15 @@ from elfi.methods.bo.iwvi.models import DGP_VI, DGP_IWVI
 
 from elfi.methods.bo.iwvi.sghmc import SGHMC
 
-
-
 logger = logging.getLogger(__name__)
 logging.getLogger("DGP").setLevel(logging.WARNING)  # DGP logger
 
 
 class DGPRegression:
-    """Deep Gaussian Process regression using the GPFlow library.
+    def __init__(self, parameter_names=None, bounds=None, GPlayers=3, LVlayer=True, \
+        Ms=50, IW_samples = 5, pred_samples = 100, opt_steps = 20000, q = 0.3):
 
-    https://github.com/GPflow/GPflow/tree/develop/gpflow
-    """
-    # + 
-    def __init__(self,
-                 parameter_names=None,
-                 bounds=None,
-                 layers=3,
-                 Ms=50,
-                 IW_samples = 5,
-                 pred_samples = 100,
-                 opt_steps = 20000,
-                 q = 0.3):
-
-        """Initialize DGPRegression.
+        '''Initialize DGPRegression.
 
         Parameters
         ----------
@@ -79,7 +60,8 @@ class DGPRegression:
             number of samples are used for predictions and gradients. 
         opt_steps : int, optional
             number of hyperparameter optimization steps
-        """
+        '''
+    
         class ARGS:
             minibatch_size = None
             lr = 5e-3
@@ -94,9 +76,13 @@ class DGPRegression:
             num_IW_samples = IW_samples # was 20 # 5
             gamma = 5e-2
             gamma_decay = 0.99
-            configuration = 'L1' # L1
 
-            for i in range(0, layers): # !
+            if LVlayer is True:
+                configuration = 'L1' # L1
+            else:
+                configuration = 'G1'
+            
+            for _ in range(GPlayers): 
                 configuration += '_G1'
 
         self.its = opt_steps

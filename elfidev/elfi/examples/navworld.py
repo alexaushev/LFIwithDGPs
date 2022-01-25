@@ -84,6 +84,7 @@ class navworld_simulator:
                 self.nav_cell_p_or_locs.append(self.grid[color])
 
         print(self.observed_data)
+        self.param_dim = 5
         # self.mdp.visualize_grid(trajectories=[states], traj_colors_auto=False)
         pass
 
@@ -167,28 +168,11 @@ class navworld_simulator:
         
         # fix locations instead of probabilities! fixed map multiple init_locs!
         rewards = []
-
-        if isinstance(params, tuple):
-            framework = 'elfi'
-        else:
-            framework = 'delfi'
-
-        if framework == 'delfi':
-            batch_size = len(params)
-        else:
-            batch_size = len(params[0])
-        # print()
+        params = np.array( params ).reshape(self.param_dim, -1)
+        batches = params.shape[1]
         
-        for i in range(batch_size):
-            
-            # cur_cell_rewards = [x[i] for x in params]
-            # print(i)
-            # print(params)
-            if framework == 'delfi':
-                cur_cell_rewards = list(params[i])
-            else:
-                cur_cell_rewards = [x[i] for x in params]
-
+        for i in range(batches):
+            cur_cell_rewards = [x for x in params[:, i]]
             # reward for black cells is fixed
             cur_cell_rewards.append(-500)
 

@@ -170,7 +170,7 @@ class GPyRegression:
         np.array
             with shape (x.shape[0], 1)
         """
-        return self.predict(x)[0]
+        return self.predict(x)[0].flatten()
 
     def predict_var(self, x):
         """Return the GP model mean function at x.
@@ -184,7 +184,7 @@ class GPyRegression:
         np.array
             with shape (x.shape[0], 1)
         """
-        return self.predict(x)[1]
+        return self.predict(x)[1].flatten()
 
     def predictive_gradients(self, x):
         """Return the gradients of the GP model mean and variance at x.
