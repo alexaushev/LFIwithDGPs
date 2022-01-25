@@ -5,47 +5,63 @@ implemented on top of the Engine for Likelihood-free Inference (ELFI).
 
 ## Getting Started
 
-The project dependencies can be installed using the following command in the directory of the project (Python 3.5 version is required):
+The project dependencies can be installed with conda by using the following command in the directory of the project (Python 3.7 version is required):
 
 ```
-python3 -m pip install --user -r requirements.txt
-python3 -m pip install --user -e elfidev/
-python3 -m pip install git+https://github.com/justinalsing/pydelfi.git
+conda create --name lfidgp --file requirements.txt
+conda activate lfidgp
+pip install --user -e elfidev/
+```
+An additional installation of the following packages may be necessary:
+```
+pip install gpflow==1.5.0 tensorflow-probability==0.7.0 tensorflow==1.14.0 seaborn simple-rl
+pip install git+https://github.com/justinalsing/pydelfi.git
 ```
 
-## Running the experiments
+## Preparing the experiments
 
-There are two script files that need to be run in order to replicate the experiments. The first one is main.py, and it runs the Bayesian Optimization procedure with the chosen surrogate model. It takes 'DGP' (for the DGP-IWVI model), 'GP' (for the vanilla GP model) and
-'Rej' (rejection ABC for calculating 'true' posterior) as the main argument. And then, for the first two models the code the name of the experiment ('TE1', 'TE2', 'TE3', 'BDM', 'NW') requires random seeds (1-1000 were used in the paper). The DGP architecture also needs to be specified, it needs 'True' or 'False' for the inclusion of the LV layer, followed by the number of hidden GP layers. The following example runs the DGP model with random seed that equals to 1 and the 'LV-2GP' architecture:
-
+Before running the LFI experiments, the ground truth values must be calculated for the given simulator (TE1 in the examples below). First one needs to run 10^7 simulations (this will take a couple of days for the BDM and NW simulators, so parallelization is highly recommended):
 ```
-python3 main.py DGP BDM 1 True 1
+python run_experiment.py --meth=Rej --sim=TE1 --evidence=10000000 --seed=0
 ```
-
-Similarly, the GP model and ABC-rejection can be trained as follows:
-
+Followed by creating the true posterior by leaving 1000 simulations with the lowest discrepancy:
 ```
-python3 main.py GP BDM 1
-python3 main.py Rej
+python run_experiment.py --meth=True --sim=TE1 --evidence=1000 --seed=0
 ```
+This will create the ground-truth posterior, which will be used when calculating the Wasserstein distance, for LFI experiments. It will be stored in the 'results/TE1/True' folder.
 
-Please note, that running all these models with the current configuration (that was used in the paper) require a lot of time: up to 7 hours for the surrogates and up to several days for the rejection ABC. After running the models, it creates files in the 'posterior' folder. The surrogate models are separated in the folders with their names and the result of the rejection ABC is simply put as a file.
 
-Once the posterior samples are ready, the second script 'compare.py' can be run. The script calculates the Wasserstein distance for each surrogate posterior vs 'true' posterior and puts them in a plot for comparison in the 'posteriors/plots/' folder. Since running the surrogate models 1,000 times is a computationally expensive task, we included all files with already calculated Wasserstein distances, so the 'compare.py' script can be run without first executing 'main.py'. Please notice, that if you want to replicate the experiments from the appendix, you need to copy and paste file from 'posteriors/appendix-experiments' to 'posteriors/' and uncomment line 29 in 'compare.py'.
+## Running the LFI experiments
 
-## Running alternative models
-
-MAF, MDNs and KELFI are computed in separate scripts: 'main-snl.py', 'main-kelfi.py'. They can be run similarly as the script from the main experiments. For the 'main-snl.py', the model ('MAF' or 'MDN'), the experiment name and the random seed number are needed. For example:
-
+All experiments can be run through 'run_experiment.py' and passing the correct arguments. Specifically, to run one of the models, specify the method (BO, NDE or KELFI), the surrogate model (GP, DGP, MDN, MAF), the simulator (TE1, TE2, TE3, TE4, BDM, CI, SL, NW), the random seed of the experiments, and the evidence (i.e. the number of simulations to run). For instance:
 ```
-python3 main-snl.py MAF BDM 1
+python run_experiment.py --meth=BO --surrogate=GP --sim=TE1 --seed=0 --evidence=200
 ```
+will run BOLFI with the standard GP for the TE1 simulator with 200 simualations. The results will be saved in the 'results/TE1/BO-GP(200)' folder. Note, that KELFI does not have a surrogate, and DGPs have additional parameters:
+the number of GP and LV layers, and the quantile threshold value. For instance:
+```
+python run_experiment.py --meth=BO --surrogate=DGP --sim=NW --seed=0 --evidence=200 --gplayers=2 --lv=True --q=0.3
+```
+will run the LV-2GP variant of the DGP for the NW simulatior with 200 simulations and with the quantile threshold equal to 0.3. The results will be stored in the 'results/NW/BO-LV-2GP-0.3(200)' folder.
 
-For 'main-kelfi.py', instead of the name of the model, the automatic differentation for hyperparameter learning should be specified ('True' or 'False'):
 
+## Collecting the results
+
+Once the experiments have run, the results can be retrieved. The most easiest way to collect them is by simply running 
 ```
-python3 main-kelfi.py BDM 1 False
+python run_experiment.py --meth=Tex --seed=0
 ```
+which will print the Wasserstein distance (the mean and std) in Latex format for all available experiments. 
+
+It is also possible to plot the marginals of the target posteriors for LV-2GP and GP with:
+```
+python run_experiment.py --meth=MargPlot --sim=TE1 --seed=0
+```
+and the Wasserstein distance boxplots (which will go through all experiments):
+```
+python run_experiment.py --meth=WassPlot --seed=0
+```
+the plots are stored in the 'plots/' folder.
 
 ## Citation
 
